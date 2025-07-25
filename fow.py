@@ -3,11 +3,14 @@ import time
 from bs4 import BeautifulSoup
 import re
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ===== 설정 =====
-NICKNAME = os.getenv("LOL_NICKNAME", "햅햅비#0000")  # Render 환경변수에서 가져옴
+NICKNAME = os.getenv("LOL_NICKNAME", "햅햅비#0000")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "10"))  # 초
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "10"))
 # =================
 
 def format_nickname(name):
@@ -37,15 +40,15 @@ def get_ingame_info(sid, puuid):
     soup = BeautifulSoup(res.text, "html.parser")
     full_text = soup.get_text().strip()
 
-    # 시간 패턴으로 인게임 여부 확인
+    # 인게임 여부 확인
     if not re.search(r"\d+분 \d+초", full_text):
-        return None  # 인게임 아님
+        return None
 
     lines = [line.strip() for line in full_text.split("\n") if line.strip()]
     mode_info = lines[0] if lines else "알 수 없음"
 
-    # 시간 추출 (초 단위)
-    time_match = re.search(r"(\d+)분 (\d+)초", mode_info)
+    # 시간 추출
+    time_match = re.search(r"(\d+)분 (\d+)초", full_text)
     current_time = int(time_match.group(1)) * 60 + int(time_match.group(2)) if time_match else 0
 
     champs = [img["alt"].strip() for img in soup.find_all("img", alt=True) if len(img["alt"].strip()) > 1]
@@ -72,25 +75,31 @@ def main():
     print(f"✔ sid: {sid}, puuid: {puuid}")
     last_signature = None
     last_time = None
-    
+    game_active = False
+
     print("✔ Script started. Monitoring...")
-    
+
     while True:
         info = get_ingame_info(sid, puuid)
         if info:
-            signature = info['mode'] + "-" + ",".join(info['champs'])
+            signature = info['mode'] + "-" + ",".join(sorted(info['champs']))
             current_time = info['time']
 
-            # 새 게임 시작 조건
-            if signature != last_signature or (last_time and current_time < last_time):
+            if not game_active or signature != last_signature or (last_time and current_time < last_time):
                 msg = f"🔥 새 게임 시작!\n모드: {info['mode']}\n챔피언: {', '.join(info['champs']) if info['champs'] else '정보 없음'}"
                 print(msg)
                 send_discord_alert(msg)
                 last_signature = signature
+                game_active = True
 
             last_time = current_time
         else:
-            print("아직 게임 중이 아님...")
+            if game_active:
+                print("✔ 게임 종료 감지")
+                send_discord_alert("✔ 게임이 종료되었습니다.")
+                game_active = False
+            else:
+                print("아직 게임 중이 아님...")
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
