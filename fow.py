@@ -7,18 +7,21 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
 
-# ===== 환경 변수 로드 =====
-load_dotenv()
+# ===== 환경 변수 로드 (절대경로로 .env 지정) =====
+load_dotenv(dotenv_path="/home/ubuntu/lol-alert/.env")
 NICKNAME = os.getenv("LOL_NICKNAME", "햅햅비#0000")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))  # 초 단위
-# ==========================
+
+# 디버그 로그
+print(f"✔ 설정 완료: NICKNAME={NICKNAME}, Webhook={'OK' if DISCORD_WEBHOOK_URL else 'MISSING'}")
+# ===================================================
 
 def format_nickname(name):
     return name.replace("#", "-")
 
-# sid, puuid 가져오기
 def get_sid_puuid(nickname):
     formatted_name = format_nickname(nickname)
     url = f"https://www.fow.lol/find/kr/{formatted_name}"
@@ -33,7 +36,7 @@ def get_sid_puuid(nickname):
         return match.group(1), match.group(2)
     return None, None
 
-# ✅ 관전 버튼 클릭 (Headless Chrome)
+# ✅ 관전 버튼 강제 클릭
 def click_spectate_button(nickname):
     try:
         options = webdriver.ChromeOptions()
@@ -42,21 +45,23 @@ def click_spectate_button(nickname):
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
-        options.binary_location = "/home/ubuntu/chrome-linux/chrome"  # ✅ Chrome 경로
+        options.binary_location = "/home/ubuntu/chrome-linux/chrome"
 
-        driver = webdriver.Chrome(options=options)
+        service = Service("/usr/local/bin/chromedriver")
+        driver = webdriver.Chrome(service=service, options=options)
+
         formatted_name = format_nickname(nickname)
         url = f"https://www.fow.lol/find/kr/{formatted_name}"
         print(f"페이지 로딩 중... {url}")
         driver.get(url)
-        time.sleep(3)  # 페이지 로딩 대기
+        time.sleep(3)
 
         try:
-            button = driver.find_element(By.XPATH, "//div[@id='btnLiveGame' and contains(text(), '게임 관전하기')]")
-            button.click()
-            print("✅ '게임 관전하기 - 인게임 정보' 버튼 클릭 완료")
+            button = driver.find_element(By.ID, "btnLiveGame")
+            driver.execute_script("arguments[0].click();", button)
+            print("✅ '게임 관전하기' 버튼 강제 클릭 완료")
         except:
-            print("⚠ 관전 버튼을 찾을 수 없음 (게임 중 아닐 가능성)")
+            print("⚠ 버튼 클릭 실패 (DOM에 없음)")
         driver.quit()
     except Exception as e:
         print(f"❌ 버튼 클릭 중 오류: {e}")
@@ -86,15 +91,17 @@ def get_ingame_info(sid, puuid):
 
     return {"mode": mode_info, "champs": champs, "time": current_time}
 
-# Discord 알림
+# ✅ Discord 알림
 def send_discord_alert(message):
+    print(f"📢 Discord 알림 시도: {message[:30]}...")  # 디버그용
     if not DISCORD_WEBHOOK_URL:
         print("⚠ Discord Webhook URL이 설정되지 않음")
         return
     try:
-        requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
+        res = requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
+        print(f"✅ Discord 응답 코드: {res.status_code}")
     except Exception as e:
-        print(f"Discord 알림 오류: {e}")
+        print(f"❌ Discord 알림 오류: {e}")
 
 # 메인 로직
 def main():
