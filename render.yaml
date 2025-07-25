@@ -1,6 +1,0 @@
-services:
-  - type: worker
-    name: lol-game-alert
-    env: python
-    buildCommand: ""
-    startCommand: "python main.py"
