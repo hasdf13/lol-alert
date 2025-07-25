@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -18,6 +19,7 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))  # 초 단위
 # ==========================
 
+# 닉네임 포맷 변환 (햅햅비#0000 -> 햅햅비-0000)
 def format_nickname(name):
     return name.replace("#", "-")
 
@@ -36,38 +38,35 @@ def get_sid_puuid(nickname):
         return match.group(1), match.group(2)
     return None, None
 
-# ✅ "게임 관전하기 - 인게임 정보" 버튼 클릭 (안전 XPath)
+# ✅ 관전 버튼 클릭 (Selenium)
 def click_spectate_button(nickname):
     try:
         options = Options()
-        options.add_argument("--headless")  # 서버에서도 실행 가능
+        options.add_argument("--headless")  # GUI 없이 실행
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--user-data-dir=/tmp/chrome-profile-" + str(time.time()))
 
-        from selenium.webdriver.chrome.service import Service
         service = Service('/usr/bin/chromedriver')
         driver = webdriver.Chrome(service=service, options=options)
-        formatted_name = nickname.replace("#", "-")
+
+        formatted_name = format_nickname(nickname)
         url = f"https://www.fow.lol/find/kr/{formatted_name}"
-        driver.get(url)
         print("페이지 로딩 중...")
+        driver.get(url)
 
-        try:
-            # id와 텍스트 모두 확인하여 버튼 클릭
-            button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//div[@id='btnLiveGame' and contains(text(), '게임 관전하기')]"))
-            )
-            button.click()
-            print("✅ '게임 관전하기 - 인게임 정보' 버튼 클릭 완료")
-        except:
-            print("⚠ 버튼 클릭 실패 (게임 중이 아니거나 사이트 구조 변경 가능)")
+        # 버튼 로딩 대기
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "btnLiveGame")))
+        button = driver.find_element(By.ID, "btnLiveGame")
+        button.click()
+        print("✅ '게임 관전하기 - 인게임 정보' 버튼 클릭 완료")
 
-        driver.quit()
     except Exception as e:
-        print(f"❌ 버튼 클릭 중 오류: {e}")
+        print(f"⚠ 버튼 클릭 실패: {e}")
+    finally:
+        driver.quit()
 
-# 인게임 정보 확인
+# 게임 정보 가져오기 (BeautifulSoup)
 def get_ingame_info(sid, puuid):
     url = f"https://www.fow.lol/api/livegame?sid={sid}&puuid={puuid}&region=kr&auto=1&_={random.randint(1000000,9999999)}"
     headers = {"User-Agent": "Mozilla/5.0"}
@@ -78,12 +77,14 @@ def get_ingame_info(sid, puuid):
     soup = BeautifulSoup(res.text, "html.parser")
     full_text = soup.get_text().strip()
 
+    # 인게임 여부 확인
     if not re.search(r"\d+분 \d+초", full_text):
         return None
 
     lines = [line.strip() for line in full_text.split("\n") if line.strip()]
     mode_info = lines[0] if lines else "알 수 없음"
 
+    # 시간 추출
     time_match = re.search(r"(\d+)분 (\d+)초", full_text)
     current_time = int(time_match.group(1)) * 60 + int(time_match.group(2)) if time_match else 0
 
@@ -117,8 +118,10 @@ def main():
     print("✔ Script started. Monitoring...")
 
     while True:
+        # ✅ 관전 버튼 클릭 시도
         click_spectate_button(NICKNAME)
 
+        # 2초 대기 후 인게임 정보 확인
         time.sleep(2)
         info = get_ingame_info(sid, puuid)
 
