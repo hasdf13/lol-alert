@@ -42,12 +42,15 @@ def get_sid_puuid(nickname):
 def click_spectate_button(nickname):
     try:
         options = Options()
-        options.add_argument("--headless")  # GUI 없이 실행
+        options.binary_location = "/usr/bin/chromium-browser"
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-software-rasterizer")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--user-data-dir=/tmp/chrome-profile-" + str(time.time()))
 
-        service = Service('/usr/bin/chromedriver')
+        service = Service("/usr/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=options)
 
         formatted_name = format_nickname(nickname)
@@ -55,7 +58,6 @@ def click_spectate_button(nickname):
         print("페이지 로딩 중...")
         driver.get(url)
 
-        # 버튼 로딩 대기
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "btnLiveGame")))
         button = driver.find_element(By.ID, "btnLiveGame")
         button.click()
@@ -64,7 +66,10 @@ def click_spectate_button(nickname):
     except Exception as e:
         print(f"⚠ 버튼 클릭 실패: {e}")
     finally:
-        driver.quit()
+        if 'driver' in locals():
+            driver.quit()
+
+
 
 # 게임 정보 가져오기 (BeautifulSoup)
 def get_ingame_info(sid, puuid):
