@@ -72,7 +72,9 @@ def main():
     print(f"✔ sid: {sid}, puuid: {puuid}")
     last_signature = None
     last_time = None
-
+    
+    print("✔ Script started. Monitoring...")
+    
     while True:
         info = get_ingame_info(sid, puuid)
         if info:
