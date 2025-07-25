@@ -6,7 +6,6 @@ import re
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 
 # ===== 환경 변수 로드 =====
@@ -16,7 +15,6 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))  # 초 단위
 # ==========================
 
-# 닉네임 포맷 변환
 def format_nickname(name):
     return name.replace("#", "-")
 
@@ -35,36 +33,35 @@ def get_sid_puuid(nickname):
         return match.group(1), match.group(2)
     return None, None
 
-# ✅ Selenium: 관전 버튼 클릭
+# ✅ 관전 버튼 클릭 (Headless Chrome)
 def click_spectate_button(nickname):
     try:
-        options = Options()
-        options.binary_location = "/home/ubuntu/chrome-linux/chrome"  # 크롬 실행 경로
-        options.add_argument("--headless=new")  # 최신 방식 headless
+        options = webdriver.ChromeOptions()
+        options.add_argument("--disable-gpu")
+        options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--user-data-dir=/tmp/chrome-profile-" + str(time.time()))
+        options.add_argument("--window-size=1920,1080")
+        options.binary_location = "/home/ubuntu/chrome-linux/chrome"  # ✅ Chrome 경로
 
         driver = webdriver.Chrome(options=options)
         formatted_name = format_nickname(nickname)
         url = f"https://www.fow.lol/find/kr/{formatted_name}"
+        print(f"페이지 로딩 중... {url}")
         driver.get(url)
-        time.sleep(3)
+        time.sleep(3)  # 페이지 로딩 대기
 
-        # 관전 버튼 클릭
         try:
-            button = driver.find_element(By.ID, "btnLiveGame")
+            button = driver.find_element(By.XPATH, "//div[@id='btnLiveGame' and contains(text(), '게임 관전하기')]")
             button.click()
             print("✅ '게임 관전하기 - 인게임 정보' 버튼 클릭 완료")
         except:
             print("⚠ 관전 버튼을 찾을 수 없음 (게임 중 아닐 가능성)")
-
         driver.quit()
     except Exception as e:
         print(f"❌ 버튼 클릭 중 오류: {e}")
 
-# 게임 정보 가져오기
+# 인게임 정보 가져오기
 def get_ingame_info(sid, puuid):
     url = f"https://www.fow.lol/api/livegame?sid={sid}&puuid={puuid}&region=kr&auto=1&_={random.randint(1000000,9999999)}"
     headers = {"User-Agent": "Mozilla/5.0"}
