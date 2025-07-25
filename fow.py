@@ -2,50 +2,24 @@ import os
 import time
 import random
 import re
+import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 
 # ===== 환경 변수 로드 =====
 load_dotenv()
-NICKNAME = os.getenv("LOL_NICKNAME", "햅햅비#0000")
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))  # 초 단위
+NICKNAME = os.getenv("LOL_NICKNAME", "")
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "30"))
 # ==========================
 
-# ✅ 닉네임 포맷 (햅햅비#0000 -> 햅햅비-0000)
 def format_nickname(name):
     return name.replace("#", "-")
 
-# ✅ Selenium 크롬 설정
-def create_driver():
-    options = Options()
-    options.add_argument("--headless=new")  # 최신 방식 headless
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--disable-features=VizDisplayCompositor")
-    options.add_argument("--user-agent=Mozilla/5.0")
-    options.add_argument("--user-data-dir=/tmp/chrome-profile-" + str(time.time()))
-    driver = webdriver.Chrome(options=options)
-    return driver
-
-# ✅ sid, puuid 가져오기
-def get_sid_puuid(nickname):
-    formatted_name = format_nickname(nickname)
-    url = f"https://www.fow.lol/find/kr/{formatted_name}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    res = requests.get(url, headers=headers)
-    match = re.search(r"sid=(\d+)&puuid=([\w\-]+)&", res.text)
-    if match:
-        return match.group(1), match.group(2)
-    return None, None
-
-# ✅ 관전 버튼 클릭
+# ✅ 관전 버튼 클릭 (Selenium)
 def click_spectate_button(driver, nickname):
     try:
         formatted_name = format_nickname(nickname)
@@ -54,14 +28,13 @@ def click_spectate_button(driver, nickname):
         driver.get(url)
         time.sleep(3)
 
-        button = driver.find_element(By.CSS_SELECTOR, "#btnLiveGame")
+        button = driver.find_element(By.ID, "btnLiveGame")
         button.click()
         print("✅ '게임 관전하기' 버튼 강제 클릭 완료")
-        time.sleep(3)
     except Exception as e:
         print(f"⚠ 관전 버튼 클릭 실패: {e}")
 
-# ✅ 인게임 정보 가져오기 (Selenium page_source 활용)
+# ✅ 게임 정보 가져오기
 def get_ingame_info(driver):
     html = driver.page_source
     if not html or len(html) < 100:
@@ -77,17 +50,14 @@ def get_ingame_info(driver):
     header_text = time_tag.get_text(strip=True)
     print(f"DEBUG: header_text = {header_text}")
 
-    # ✅ 한글/영어 모두 지원하는 시간 패턴
+    # ✅ 한글/영어 시간 패턴 지원
     time_match = re.search(r"(\d+)\s*(?:분|minutes?)\s*(\d+)\s*(?:초|seconds?)", header_text)
     if not time_match:
         print("DEBUG: 시간 패턴 매칭 실패")
         return None
     current_time = int(time_match.group(1)) * 60 + int(time_match.group(2))
 
-    # 모드 추출
     mode_info = header_text.split(" ⁝ ")[0] if "⁝" in header_text else header_text
-
-    # 챔피언 목록
     champs = [img["alt"].strip() for img in soup.find_all("img", alt=True) if len(img["alt"].strip()) > 1]
     champs = champs[:10]
 
@@ -97,42 +67,39 @@ def get_ingame_info(driver):
         "time": current_time
     }
 
-
 # ✅ Discord 알림
 def send_discord_alert(message):
     if not DISCORD_WEBHOOK_URL:
-        print("⚠ Webhook URL이 설정되지 않음")
+        print("⚠ Discord Webhook URL이 설정되지 않음")
         return
+    print(f"📢 Webhook URL: [{DISCORD_WEBHOOK_URL}]")  # 디버그용
     try:
-        print(f"📢 Discord 알림 시도: {message[:50]}...")
-        res = requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
-        if res.status_code == 204:
-            print("✅ Discord 알림 성공")
-        else:
-            print(f"❌ Discord 알림 실패 (status: {res.status_code})")
+        response = requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
+        print(f"📢 Discord 응답 코드: {response.status_code}")
+        print(f"📢 Discord 응답 본문: {response.text}")
     except Exception as e:
-        print(f"❌ Discord 알림 오류: {e}")
+        print(f"Discord 알림 오류: {e}")
 
-# ✅ 메인 로직
+# ✅ 메인 실행
 def main():
-    print(f"✔ 설정 완료: NICKNAME={NICKNAME}, Webhook={'OK' if DISCORD_WEBHOOK_URL else 'None'}")
-    sid, puuid = get_sid_puuid(NICKNAME)
-    if not sid or not puuid:
-        print("❌ sid/puuid 가져오기 실패")
-        return
+    print(f"✔ 설정 완료: NICKNAME={NICKNAME}, Webhook={'OK' if DISCORD_WEBHOOK_URL else 'Missing'}")
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--user-data-dir=/tmp/chrome-profile-" + str(time.time()))
+    options.binary_location = "/home/ubuntu/chrome-linux/chrome"  # 서버용 Chrome 경로
+    driver = webdriver.Chrome(options=options)
 
-    print(f"✔ 햅햅비#0000 인게임 감지 시작...")
-    print(f"✔ sid: {sid}, puuid: {puuid}")
-    print("✔ Script started. Monitoring...")
-
-    driver = create_driver()
+    sid = None
     last_signature = None
     last_time = None
     game_active = False
 
     while True:
-        # 관전 버튼 클릭
         click_spectate_button(driver, NICKNAME)
+        time.sleep(3)
         info = get_ingame_info(driver)
 
         if info:
