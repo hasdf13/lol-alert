@@ -77,14 +77,14 @@ def get_ingame_info(driver):
     header_text = time_tag.get_text(strip=True)
     print(f"DEBUG: header_text = {header_text}")
 
-    # 시간 추출
-    time_match = re.search(r"(\d+)분\s*(\d+)초", header_text)
+    # ✅ 한글/영어 모두 지원하는 시간 패턴
+    time_match = re.search(r"(\d+)\s*(?:분|minutes?)\s*(\d+)\s*(?:초|seconds?)", header_text)
     if not time_match:
         print("DEBUG: 시간 패턴 매칭 실패")
         return None
     current_time = int(time_match.group(1)) * 60 + int(time_match.group(2))
 
-    # 모드
+    # 모드 추출
     mode_info = header_text.split(" ⁝ ")[0] if "⁝" in header_text else header_text
 
     # 챔피언 목록
@@ -96,6 +96,7 @@ def get_ingame_info(driver):
         "champs": champs,
         "time": current_time
     }
+
 
 # ✅ Discord 알림
 def send_discord_alert(message):
