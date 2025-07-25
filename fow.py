@@ -45,7 +45,9 @@ def click_spectate_button(nickname):
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--user-data-dir=/tmp/chrome-profile-" + str(time.time()))
 
-        driver = webdriver.Chrome(options=options)
+        from selenium.webdriver.chrome.service import Service
+        service = Service('/usr/bin/chromedriver')
+        driver = webdriver.Chrome(service=service, options=options)
         formatted_name = nickname.replace("#", "-")
         url = f"https://www.fow.lol/find/kr/{formatted_name}"
         driver.get(url)
