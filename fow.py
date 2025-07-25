@@ -72,28 +72,38 @@ def get_ingame_info(sid, puuid):
     headers = {"User-Agent": "Mozilla/5.0"}
     res = requests.get(url, headers=headers)
     if res.status_code != 200:
+        print(f"DEBUG: Request failed with status {res.status_code}")
         return None
+
+    # ✅ 응답 길이와 앞부분 출력
+    print("DEBUG: Raw HTML length =", len(res.text))
+    print("DEBUG: First 500 chars =", res.text[:500])
 
     soup = BeautifulSoup(res.text, "html.parser")
 
-    # ✅ 게임 진행 여부 체크 (시간이 있는지 확인)
+    # ✅ livegame_header 존재 여부 확인
     time_tag = soup.select_one(".livegame_header div")
+    if time_tag:
+        print(f"DEBUG: header_text = {time_tag.get_text(strip=True)}")
+    else:
+        print("DEBUG: livegame_header not found in parsed HTML")
+
     if not time_tag:
         return None  # livegame_header가 없으면 게임 중 아님
 
     header_text = time_tag.get_text(strip=True)
-    print(f"DEBUG: header_text = {header_text}")
 
-    # ✅ "0분 53초" 패턴에서 시간 추출
+    # ✅ 시간 추출
     time_match = re.search(r"(\d+)분\s*(\d+)초", header_text)
     if not time_match:
-        return None  # 시간 정보가 없으면 게임 중 아님
+        print("DEBUG: 시간 패턴 매칭 실패")
+        return None
     current_time = int(time_match.group(1)) * 60 + int(time_match.group(2))
 
-    # ✅ 모드 정보
+    # ✅ 모드
     mode_info = header_text.split(" ⁝ ")[0] if "⁝" in header_text else header_text
 
-    # ✅ 챔피언 목록 (alt 속성 중 길이가 2 이상인 것)
+    # ✅ 챔피언 목록
     champs = [img["alt"].strip() for img in soup.find_all("img", alt=True) if len(img["alt"].strip()) > 1]
     champs = champs[:10]
 
@@ -102,6 +112,7 @@ def get_ingame_info(sid, puuid):
         "champs": champs,
         "time": current_time
     }
+
 
 
 # ✅ Discord 알림
